@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Live Demo Hub — Claude Builder Community</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+    color: #eee;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .app { width: 100%; max-width: 860px; padding: 32px 24px; }
+
+  h1 { font-size: 1.9rem; margin-bottom: 4px; }
+  h1 .accent { color: #e94560; }
+  .sub { color: #999; margin-bottom: 32px; font-size: 0.95rem; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+
+  a.demo {
+    display: block;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 16px;
+    padding: 22px;
+    color: #eee;
+    text-decoration: none;
+    transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+  }
+  a.demo:hover {
+    transform: translateY(-4px);
+    border-color: #4ecca3;
+    background: rgba(78, 204, 163, 0.08);
+  }
+
+  .num {
+    font-size: 0.7rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: #4ecca3;
+  }
+  .demo h2 { font-size: 1.15rem; margin: 6px 0 8px; }
+  .demo p { font-size: 0.85rem; color: #aaa; line-height: 1.55; }
+  .demo .go { display: inline-block; margin-top: 12px; color: #4ecca3; font-weight: 700; font-size: 0.85rem; }
+
+  footer { margin-top: 36px; text-align: center; font-size: 0.75rem; color: rgba(255,255,255,0.35); }
+</style>
+</head>
+<body>
+<div class="app">
+  <h1>Live build: <span class="accent">3 demos, 15 minutes</span></h1>
+  <div class="sub">All pure HTML — open any card in a browser, no install, no server, no keys.</div>
+
+  <div class="grid">
+    <a class="demo" href="flashcard-quiz.html">
+      <div class="num">Demo 01 · Learn</div>
+      <h2>OOP Flashcard Quiz</h2>
+      <p>8 cards on Encapsulation, Abstraction, Inheritance &amp; Polymorphism — keeps score, explains every answer, grades you at the end.</p>
+      <div class="go">Play the quiz →</div>
+    </a>
+
+    <a class="demo" href="palette.html">
+      <div class="num">Demo 02 · Create</div>
+      <h2>Vibe Palette</h2>
+      <p>Type a feeling — "cozy rainy coffee shop at dusk" — and words become a 5-color palette with names and copy-paste CSS variables.</p>
+      <div class="go">Paint with words →</div>
+    </a>
+
+    <a class="demo" href="sticky-wall.html">
+      <div class="num">Demo 03 · Participate</div>
+      <h2>Live Sticky Wall</h2>
+      <p>The whole room posts answers that fly onto a shared wall live — across different browsers and devices. Identical words merge and grow — the crowd builds the visual.</p>
+      <div class="go">Join the wall →</div>
+    </a>
+  </div>
+
+  <footer>tip: sticky wall syncs across browsers &amp; devices via a live broker — join the same room code everywhere, e.g. ?room=my-demo</footer>
+</div>
+</body>
+</html>

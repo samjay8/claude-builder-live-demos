@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Live Sticky Wall — everyone answers at once</title>
+<script src="https://unpkg.com/mqtt/dist/mqtt.min.js" crossorigin="anonymous"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: linear-gradient(135deg, #16213e 0%, #0f3460 100%);
+    color: #eee;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 16px 24px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    flex-wrap: wrap;
+  }
+  h1 { font-size: 1.3rem; color: #e94560; }
+  .prompt-box {
+    flex: 1;
+    text-align: center;
+    min-width: 260px;
+  }
+  .prompt-title {
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: #4ecca3;
+  }
+  .prompt-text { font-size: 1.05rem; font-weight: 600; }
+  .meta { display: flex; align-items: center; gap: 12px; font-size: 0.8rem; color: #999; white-space: nowrap; }
+  .meta span { color: #4ecca3; font-weight: bold; }
+  .conn {
+    font-size: 0.7rem;
+    padding: 5px 12px;
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,0.2);
+  }
+  .conn.live { color: #4ecca3; border-color: rgba(78,204,163,0.5); }
+  .conn.bad { color: #e94560; border-color: rgba(233,69,96,0.5); }
+
+  main {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    min-height: 0;
+  }
+
+  /* ------ composer panel ------ */
+  .composer {
+    border-right: 1px solid rgba(255,255,255,0.08);
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    background: rgba(0,0,0,0.18);
+  }
+  .composer label {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: #aaa;
+  }
+  .composer input, .composer textarea {
+    padding: 12px 14px;
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.15);
+    background: rgba(255,255,255,0.06);
+    color: #eee;
+    font-size: 1rem;
+    outline: none;
+    resize: none;
+  }
+  .composer input:focus, .composer textarea:focus { border-color: #4ecca3; }
+
+  button {
+    padding: 12px;
+    border: none;
+    border-radius: 10px;
+    font-size: 0.95rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: filter 0.15s;
+  }
+  button:hover { filter: brightness(1.12); }
+  .post-btn { background: #e94560; color: white; }
+  .shuffle-btn { background: rgba(255,255,255,0.08); color: #ccc; border: 1px solid rgba(255,255,255,0.15); }
+  .clear-btn { background: rgba(233,69,96,0.12); color: #e94560; border: 1px solid rgba(233,69,96,0.35); margin-top: auto; }
+  .hint { font-size: 0.75rem; color: #888; line-height: 1.5; }
+
+  /* ------ wall ------ */
+  .wall {
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    gap: 16px;
+    padding: 30px;
+  }
+  .wall.empty::before {
+    content: "wait for the stickies to fly in →";
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(255,255,255,0.15);
+    font-size: 1.2rem;
+  }
+  .wall {
+    display: flex;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    gap: 16px;
+    padding: 30px;
+    min-height: 320px;
+  }
+  .sticky {
+    width: 220px;
+    min-height: 110px;
+    padding: 8px 12px;
+    border-radius: 4px;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.35);
+    color: #222;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    transform: rotate(var(--tilt));
+    animation: drop 0.5s cubic-bezier(0.2, 1.4, 0.4, 1);
+    cursor: default;
+    position: relative;
+    flex-shrink: 0;
+  }
+  .sticky .word { font-size: 1rem; font-weight: 700; overflow-wrap: anywhere; }
+  .sticky .author { font-size: 0.7rem; opacity: 0.65; border-top: 1px dashed rgba(0,0,0,0.25); padding-top: 8px; }
+  .sticky .count {
+    position: absolute; top: -10px; right: -10px;
+    background: #16213e; color: white; font-size: 0.75rem; font-weight: 700;
+    width: 30px; height: 30px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 3px 8px rgba(0,0,0,0.4);
+  }
+  .sticky .count.hidden { display: none; }
+
+  .sticky.giant, .sticky { width: 220px; min-height: 110px; padding: 8px 12px; }
+  .sticky.giant { min-height: 150px; }
+  .sticky.giant .word { font-size: 1.6rem; }
+
+  @keyframes drop {
+    from { transform: translateY(-160px) rotate(var(--tilt)); opacity: 0; }
+    to   { transform: translateY(0) rotate(var(--tilt)); opacity: 1; }
+  }
+
+  /* ------ join overlay ------ */
+  .overlay {
+    position: fixed; inset: 0;
+    background: rgba(10, 14, 30, 0.92);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 50;
+  }
+  .join-card {
+    background: rgba(255,255,255,0.07);
+    border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 16px;
+    padding: 36px;
+    width: min(420px, 90vw);
+    text-align: center;
+  }
+  .join-card h2 { margin-bottom: 6px; }
+  .join-card p { color: #aaa; font-size: 0.9rem; margin-bottom: 22px; }
+  .join-card input {
+    width: 100%;
+    padding: 14px;
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.2);
+    background: rgba(255,255,255,0.08);
+    color: #eee;
+    font-size: 1.05rem;
+    text-align: center;
+    outline: none;
+    margin-bottom: 14px;
+  }
+  .join-card .room-row { margin-bottom: 20px; }
+  .join-card .room-row label {
+    display: block;
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: #4ecca3;
+    margin-bottom: 6px;
+  }
+  .hidden { display: none !important; }
+
+  footer {
+    padding: 10px 24px;
+    font-size: 0.72rem;
+    color: rgba(255,255,255,0.3);
+    text-align: center;
+  }
+
+  @media (max-width: 780px) {
+    main { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+    .composer { border-right: none; border-bottom: 1px solid rgba(255,255,255,0.08); }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Sticky Wall</h1>
+  <div class="prompt-box">
+    <div class="prompt-title">Today's question</div>
+    <div class="prompt-text" id="promptText"></div>
+  </div>
+  <div class="meta">
+    <span class="conn bad" id="connStatus">connecting…</span>
+    <div>room: <span id="roomLabel"></span> · <span id="total">0</span> stickies</div>
+  </div>
+</header>
+
+<main>
+  <div class="composer">
+    <label for="wordInput">You are: <b id="whoami"></b></label>
+    <input type="text" id="wordInput" maxlength="28" placeholder="One word or short phrase…" autocomplete="off">
+    <button class="post-btn" id="postBtn">Stick it to the wall 📌</button>
+    <button class="shuffle-btn" id="shuffleBtn">Shuffle question 🎲</button>
+    <div class="hint" id="syncHint">Synced across browsers &amp; devices via a live broker — everyone in this room sees every word.</div>
+    <button class="clear-btn" id="clearBtn">Clear the wall ✕</button>
+  </div>
+  <div class="wall empty" id="wall"></div>
+</main>
+
+<footer>Demo #3 — live sync via a public MQTT-over-WSS broker in a private room · open this page on any device and it just works</footer>
+
+<div class="overlay" id="overlay">
+  <div class="join-card">
+    <h2>Join the wall</h2>
+    <p>Everyone using the <b>same room code</b> is on the same wall — any browser, any device.</p>
+    <div class="room-row">
+      <label for="roomInput">Room code</label>
+      <input type="text" id="roomInput" maxlength="24" placeholder="cbc-live" autocomplete="off">
+    </div>
+    <input type="text" id="nameInput" maxlength="18" placeholder="Your name…" autocomplete="off">
+    <button id="joinBtn">Jump in 🚀</button>
+  </div>
+</div>
+
+<script>
+/* ================= state ================= */
+const PROMPTS = [
+  "In one word: what does AI mean to you?",
+  "One skill every builder should learn next?",
+  "What should this community build together?",
+  "One word for the future of coding.",
+  "What brings you here tonight?",
+];
+
+const COLORS = [
+  "#f9d97c", "#f7a35c", "#f78b8b", "#b5e48c",
+  "#8ecae6", "#b8a4e9", "#f4b6c2", "#c2f0f8", "#ffe066",
+];
+
+const BROKER_URL = "wss://broker.emqx.io:8084/mqtt";
+const TOPIC_PREFIX = "cbc-live-demos/sticky-wall/v1";
+
+const urlRoom = new URLSearchParams(location.search).get("room") || "";
+let room = urlRoom || "cbc-live";
+let currentPrompt = PROMPTS[0];
+
+const el = {
+  total: document.getElementById("total"),
+  connStatus: document.getElementById("connStatus"),
+  roomLabel: document.getElementById("roomLabel"),
+  promptText: document.getElementById("promptText"),
+  wall: document.getElementById("wall"),
+  whoami: document.getElementById("whoami"),
+  wordInput: document.getElementById("wordInput"),
+  postBtn: document.getElementById("postBtn"),
+  shuffleBtn: document.getElementById("shuffleBtn"),
+  clearBtn: document.getElementById("clearBtn"),
+  overlay: document.getElementById("overlay"),
+  nameInput: document.getElementById("nameInput"),
+  roomInput: document.getElementById("roomInput"),
+  joinBtn: document.getElementById("joinBtn"),
+};
+
+el.roomInput.value = room;
+el.roomLabel.textContent = room;
+
+const me = { name: null, color: null };
+const tallies = new Map();   // word -> { node, count, authors:Set }
+let joined = false;
+
+/* ================= sync layer =================
+   Primary: MQTT over WSS on a public broker (cross-browser,
+   cross-device, no accounts). Fallback: BroadcastChannel
+   (same browser only) if the CDN/broker is unreachable.      */
+let client = null;          // mqtt client
+let fallbackBus = null;     // BroadcastChannel-ish
+let subscribedRoom = null;
+let mode = "local";         // "mqtt" | "local"
+
+function topicFor(r) { return TOPIC_PREFIX + "/" + r; }
+
+function setStatus(text, isLive) {
+  if (!el.connStatus) return;
+  el.connStatus.textContent = text;
+  el.connStatus.classList.toggle("live", !!isLive);
+  el.connStatus.classList.toggle("bad", !isLive);
+}
+
+function publish(msg) {
+  if (mode === "mqtt" && client && client.connected) {
+    client.publish(topicFor(room), JSON.stringify(msg));
+  } else if (fallbackBus) {
+    fallbackBus.post(msg);
+  }
+}
+
+function handleMessage(msg) {
+  if (msg.kind === "state") {
+    applyState(msg);
+  } else if (msg.kind === "prompt") {
+    setPrompt(msg.prompt, false);   // presenter shuffled the question
+  } else if (msg.kind === "hello") {
+    // newcomer (or reconnect) asks the room: share full state
+    publish({ kind: "state", words: snapshot(), prompt: currentPrompt });
+  }
+}
+
+function snapshot() {
+  return [...tallies.entries()].map(([word, t]) => ({ word, count: t.count }));
+}
+
+function applyState(msg) {
+  // full reconcile: add anything missing, grow counts, and DELETE
+  // anything not in the broadcast (so Clear spreads to everywhere)
+  const seen = new Set();
+  (msg.words || []).forEach(({ word, count }) => {
+    seen.add(word);
+    const t = tallies.get(word);
+    if (t) {
+      while (t.count < count) addSticky(word, null, true);
+    } else {
+      for (let i = 0; i < count; i++) addSticky(word, null, true);
+    }
+  });
+  [...tallies.keys()].forEach(word => {
+    if (!seen.has(word)) {
+      // a remote clear removed this word entirely: delete the card too
+      const c = el.wall.querySelector('.sticky[data-word="' + JSON.stringify(word) + '"]');
+      if (c) c.remove();
+      tallies.delete(word);
+    }
+  });
+  if (msg.prompt) setPrompt(msg.prompt, false);
+  if (tallies.size === 0) el.wall.classList.add("empty");
+  updateMeta();
+}
+
+function initSync() {
+  if (window.mqtt && typeof window.mqtt.connect === "function") {
+    try {
+      mode = "mqtt";
+      client = window.mqtt.connect(BROKER_URL, { reconnectPeriod: 3000, connectTimeout: 8000 });
+
+      client.on("connect", () => {
+        setStatus("live ✓", true);
+        resubscribe(room);
+        if (joined) publish({ kind: "hello" });
+      });
+      client.on("reconnect", () => setStatus("reconnecting…", false));
+      client.on("close", () => setStatus("offline — retrying", false));
+      client.on("error", () => setStatus("broker unreachable", false));
+
+      client.on("message", (_topic, payload) => {
+        try { handleMessage(JSON.parse(payload.toString())); } catch (e) { /* bad frame, ignore */ }
+      });
+    } catch (e) {
+      initFallback();
+    }
+  } else {
+    initFallback();
+  }
+}
+
+function resubscribe(r) {
+  if (!client) return;
+  if (subscribedRoom !== null && subscribedRoom !== r) {
+    try { client.unsubscribe(topicFor(subscribedRoom)); } catch (e) {}
+  }
+  client.subscribe(topicFor(r));
+  subscribedRoom = r;
+}
+
+function initFallback() {
+  mode = "local";
+  const hint = document.getElementById("syncHint");
+  if (hint) hint.textContent = "⚠ Broker unreachable — running in local-only mode (syncs tabs/windows of this browser only).";
+  setStatus("local only", false);
+  if (window.BroadcastChannel) {
+    fallbackBus = new BroadcastChannel("sticky-wall-demo");
+    fallbackBus.onmessage = e => handleMessage(e.data);
+  } else {
+    window.addEventListener("storage", e => {
+      if (e.key === "sticky-wall-demo" && e.newValue) handleMessage(JSON.parse(e.newValue));
+    });
+    fallbackBus = {
+      post: msg => { try { localStorage.setItem("sticky-wall-demo", JSON.stringify({ ...msg, _t: Date.now() })); } catch (e) {} },
+    };
+  }
+}
+
+/* ================= join flow ================= */
+function join() {
+  const name = el.nameInput.value.trim();
+  if (!name) { el.nameInput.focus(); return; }
+  me.name = name;
+  me.color = COLORS[Math.floor(Math.random() * COLORS.length)];
+
+  const wantedRoom = (el.roomInput.value.trim() || "cbc-live").toLowerCase().replace(/[^a-z0-9-]/g, "");
+  if (wantedRoom !== room) {
+    room = wantedRoom;
+    el.roomLabel.textContent = room;
+    if (mode === "mqtt" && client && client.connected) resubscribe(room);
+  }
+
+  joined = true;
+  el.overlay.classList.add("hidden");
+  el.whoami.textContent = name;
+  el.wordInput.focus();
+  setPrompt(currentPrompt);       // announce our current prompt to the room
+  publish({ kind: "hello" });     // ask the room for the full state
+}
+
+function setPrompt(p, rebroadcast = true) {
+  currentPrompt = p;
+  el.promptText.textContent = p;
+  if (rebroadcast) publish({ kind: "prompt", prompt: p });
+}
+
+function post() {
+  const raw = el.wordInput.value.trim();
+  if (!raw) { el.wordInput.focus(); return; }
+  addSticky(raw, me.name, false);
+  el.wordInput.value = "";
+  el.wordInput.focus();
+  publish({ kind: "state", words: snapshot(), prompt: currentPrompt });
+}
+
+function addSticky(rawWord, author, silent) {
+  const wordKey = rawWord.toLowerCase();
+
+  let t = tallies.get(wordKey);
+  let node;
+  // if this word is already on the wall, update its label + colour;
+  // otherwise create a brand-new card for it
+  let target = el.wall.querySelector(".sticky[data-word=" + JSON.stringify(wordKey) + "]");
+  if (target) {
+    target.querySelector(".author").textContent = author || "";
+    target.textContent = word;
+    target.style.background = COLORS[Math.floor(Math.random() * COLORS.length)];
+    node = target;
+  } else {
+    node = document.createElement("div");
+    node.className = "sticky";
+    node.dataset.word = wordKey;
+    node.textContent = word;
+    node.style.setProperty("--tilt", (Math.random() * 12 - 6).toFixed(1) + "deg");
+    node.style.background = COLORS[Math.floor(Math.random() * COLORS.length)];
+    node.querySelector(".author").textContent = author || "";
+    el.wall.appendChild(node);
+    el.wall.classList.remove("empty");
+  }
+  t = t || { count: 1, node, authors: new Set(author ? [author] : []) };
+  t.count++;
+  if (author) t.authors.add(author);
+  updateStickyVisual(node, t);
+  if (t.count >= 2) node.classList.add("giant");
+  updateMeta();
+}
+
+function updateStickyVisual(node, t) {
+  const authors = [...t.authors].slice(0, 3).join(", ") + (t.authors.size > 3 ? "…" : "");
+  node.querySelector(".author").textContent = authors || "someone";
+  const badge = node.querySelector(".count");
+  if (t.count > 1) {
+    badge.classList.remove("hidden");
+    badge.textContent = "×" + t.count;
+  } else {
+    badge.classList.add("hidden");
+  }
+}
+
+function updateMeta() {
+  // derive the total from the tallies so every client agrees
+  let total = 0;
+  tallies.forEach(t => (total += t.count));
+  el.total.textContent = total;
+}
+
+function clearWall() {
+  tallies.forEach(t => { if (t.node) t.node.remove(); });
+  tallies.clear();
+  el.wall.classList.add("empty");
+  updateMeta();
+  publish({ kind: "state", words: [], prompt: currentPrompt });
+}
+
+/* ================= wiring ================= */
+el.joinBtn.addEventListener("click", join);
+el.nameInput.addEventListener("keydown", e => { if (e.key === "Enter") join(); });
+el.postBtn.addEventListener("click", post);
+el.wordInput.addEventListener("keydown", e => { if (e.key === "Enter") post(); });
+el.clearBtn.addEventListener("click", clearWall);
+el.shuffleBtn.addEventListener("click", () => {
+  const next = PROMPTS[(PROMPTS.indexOf(currentPrompt) + 1) % PROMPTS.length];
+  setPrompt(next);
+});
+
+setPrompt(currentPrompt, false);
+initSync();
+</script>
+</body>
+</html>

@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vibe Palette — words become colors</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: #12121c;
+    color: #eee;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.8s ease;
+  }
+
+  .app { width: 100%; max-width: 720px; padding: 24px; }
+
+  h1 {
+    font-size: 1.6rem;
+    background: linear-gradient(90deg, #e94560, #4ecca3, #f0c74e);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    margin-bottom: 6px;
+  }
+  .sub { color: #999; margin-bottom: 28px; font-size: 0.95rem; }
+
+  .input-row { display: flex; gap: 10px; margin-bottom: 14px; }
+  input[type="text"] {
+    flex: 1;
+    padding: 14px 16px;
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.15);
+    background: rgba(255,255,255,0.06);
+    color: #eee;
+    font-size: 1rem;
+    outline: none;
+  }
+  input[type="text"]:focus { border-color: #4ecca3; }
+
+  button {
+    padding: 14px 22px;
+    border: none;
+    border-radius: 10px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: filter 0.15s, transform 0.1s;
+  }
+  button:active { transform: scale(0.97); }
+  .primary { background: #4ecca3; color: #12121c; }
+  .ghost {
+    background: rgba(255,255,255,0.08);
+    color: #eee;
+    border: 1px solid rgba(255,255,255,0.15);
+  }
+  button:hover { filter: brightness(1.12); }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 30px; }
+  .chip {
+    font-size: 0.78rem;
+    padding: 7px 12px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.14);
+    color: #bbb;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .chip:hover { border-color: #4ecca3; color: #4ecca3; }
+
+  .swatches { display: flex; gap: 12px; min-height: 190px; }
+  .swatch {
+    flex: 1;
+    border-radius: 14px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    padding: 14px 12px;
+    color: #16161f;
+    font-size: 0.8rem;
+    line-height: 1.35;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+    opacity: 0;
+    transform: translateY(14px);
+    transition: background 0.5s ease;
+  }
+  .swatch.show { opacity: 1; transform: none; transition: opacity 0.35s ease, transform 0.35s ease, background 0.5s; }
+  .swatch .name { font-weight: 700; font-size: 0.85rem; }
+  .swatch .hex { opacity: 0.75; font-family: monospace; }
+  .swatch .role { opacity: 0.7; text-transform: uppercase; letter-spacing: 1px; font-size: 0.65rem; }
+  .swatch.clickable { cursor: pointer; }
+  .swatch.clickable:hover { filter: brightness(1.08); }
+
+  .css-out {
+    margin-top: 26px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 12px;
+    padding: 16px;
+    font-family: monospace;
+    font-size: 0.82rem;
+    line-height: 1.7;
+    color: #a8e6d4;
+    white-space: pre;
+    overflow-x: auto;
+    position: relative;
+    display: none;
+  }
+  .css-out.show { display: block; animation: fadein 0.35s ease; }
+
+  .copy-btn { position: absolute; top: 10px; right: 10px; padding: 7px 14px; font-size: 0.75rem; }
+  .copied-note { color: #4ecca3; font-size: 0.8rem; margin-left: 10px; }
+  .copied-note.hidden { visibility: hidden; }
+
+  footer { margin-top: 34px; font-size: 0.72rem; color: rgba(255,255,255,0.3); text-align: center; }
+
+  @keyframes fadein { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <h1>Vibe Palette</h1>
+  <div class="sub">Describe a feeling, a place, a moment — the engine turns language into color.</div>
+
+  <div class="input-row">
+    <input type="text" id="prompt" placeholder="e.g. cozy rainy Portland coffee shop at dusk…" autocomplete="off">
+    <button class="primary" id="genBtn">Generate</button>
+  </div>
+
+  <div class="chips" id="chips"></div>
+
+  <div class="swatches" id="swatches"></div>
+
+  <div class="css-out" id="cssOut"><button class="copy-btn ghost" id="copyBtn">Copy CSS</button><span id="cssCode"></span></div>
+  <div style="margin-top:8px"><span class="copied-note hidden" id="copiedNote">✓ copied to clipboard!</span></div>
+
+  <footer>Demo #2 — built live with AI in ~15 min · colors generated 100% offline, in your browser</footer>
+</div>
+
+<script>
+/* ---------- tiny deterministic PRNG so a prompt always remixes with a seed ---------- */
+function mulberry32(a) {
+  return function() {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function hashStr(s) {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return h >>> 0;
+}
+
+/* ---------- the "brain": a lexicon mapping words -> hues ----------
+   In production this row would be an LLM API call; here it's a hand-tuned
+   lexicon + hashing so the demo works with zero setup and zero API keys.   */
+const LEXICON = [
+  { kw: ["rain", "rainy", "storm", "wet", "mist", "fog", "cloud"], hue: 215, sat: 45, name: "Rain" },
+  { kw: ["cozy", "warm", "ember", "firelight", "candle", "fire"],  hue: 25,  sat: 70, name: "Ember" },
+  { kw: ["coffee", "cafe", "espresso", "latte", "brew"],           hue: 22,  sat: 50, name: "Coffee" },
+  { kw: ["dusk", "sunset", "evening", "twilight", "night"],        hue: 285, sat: 55, name: "Dusk" },
+  { kw: ["dawn", "sunrise", "morning", "daybreak"],                hue: 38,  sat: 75, name: "Dawn" },
+  { kw: ["forest", "tree", "pine", "moss", "jungle", "leaf"],      hue: 145, sat: 45, name: "Forest" },
+  { kw: ["ocean", "sea", "wave", "tide", "lagoon", "aqua"],        hue: 190, sat: 60, name: "Ocean" },
+  { kw: ["neon", "cyber", "electric", "laser", "synth"],           hue: 310, sat: 95, name: "Neon" },
+  { kw: ["tokyo", "city", "street", "alley", "urban", "metro"],    hue: 260, sat: 55, name: "City" },
+  { kw: ["portland", "seattle", "london"],                          hue: 200, sat: 35, name: "Northwest" },
+  { kw: ["desert", "sand", "dune", "canyon", "cactus"],            hue: 32,  sat: 55, name: "Desert" },
+  { kw: ["snow", "winter", "frost", "ice", "arctic"],              hue: 205, sat: 25, name: "Frost" },
+  { kw: ["autumn", "fall", "harvest", "pumpkin"],                  hue: 30,  sat: 75, name: "Harvest" },
+  { kw: ["spring", "bloom", "flower", "petal", "garden"],          hue: 330, sat: 65, name: "Bloom" },
+  { kw: ["space", "galaxy", "star", "cosmic", "nebula"],           hue: 270, sat: 70, name: "Cosmic" },
+  { kw: ["retro", "vintage", "80s", "arcade", "nostalgia"],        hue: 15,  sat: 80, name: "Retro" },
+  { kw: ["calm", "serene", "quiet", "peace", "zen", "gentle"],     hue: 170, sat: 35, name: "Calm" },
+  { kw: ["gold", "royal", "luxury", "silk", "crown"],              hue: 45,  sat: 85, name: "Gilded" },
+];
+
+/* ---------- listen for modifier words that bend the vibe ---------- */
+function analyze(prompt) {
+  const words = prompt.toLowerCase().split(/\W+/).filter(Boolean);
+  const scores = new Map();   // hue -> strength
+  let hits = [];
+
+  LEXICON.forEach(entry => {
+    entry.kw.forEach(kw => {
+      if (words.some(w => w.startsWith(kw) || kw.startsWith(w) && w.length > 3)) {
+        const key = entry.hue;
+        scores.set(key, (scores.get(key) || 0) + 1);
+        if (!hits.includes(entry)) hits.push(entry);
+      }
+    });
+  });
+
+  // modifiers
+  const has = w => words.some(x => x.startsWith(w));
+  const tone = {
+    dark:  has("dark") || has("night") || has("midnight") || has("shadow") ? -14 : 0,
+    light: has("light") || has("pale") || has("bright") || has("pastel") ? 16 : 0,
+    vivid: has("neon") || has("vivid") || has("electric") || has("neon") || has("vibrant") || has("loud") ? 30 : 0,
+    muted: has("muted") || has("soft") || has("calm") || has("quiet") || has("dusty") ? -25 : 0,
+  };
+
+  const matched = hits.slice(0, 3).map(h => h.name);
+  return { scores, tone, matched, hitCount: hits.length };
+}
+
+function buildPalette(prompt, seedSalt) {
+  const promptHash = hashStr(prompt.toLowerCase().trim()) + (seedSalt || 0);
+  const rnd = mulberry32(promptHash);
+  const a = analyze(prompt);
+  const { tone } = a;
+
+  // pick dominant hue: strongest lexicon match, jittered by seed so
+  // the same prompt always gives a recognizable but slightly unique result
+  let baseHue, baseSat;
+  if (a.scores.size > 0) {
+    const sorted = [...a.scores.entries()].sort((x, y) => y[1] - x[1]);
+    baseHue = sorted[0][0];
+    baseSat = (LEXICON.find(l => l.hue === baseHue) || { sat: 60 }).sat;
+  } else {
+    baseHue = Math.floor(rnd() * 360);
+    baseSat = 55;
+  }
+  baseHue = (baseHue + Math.floor(rnd() * 24) - 12 + 360) % 360;
+  baseSat = Math.max(18, Math.min(95, baseSat + tone.vivid + tone.muted + (rnd() * 16 - 8)));
+
+  const swing = 18 + Math.floor(rnd() * 30);     // how far secondary drifts from primary
+  const comp = 150 + Math.floor(rnd() * 60);     // accent sits far across the wheel
+
+  const P = [
+    { hue: baseHue,                  sat: baseSat,        light: 52 + tone.dark + tone.light, role: "PRIMARY" },
+    { hue: baseHue + swing,          sat: baseSat * 0.85, light: 38 + tone.dark + tone.light, role: "SECONDARY" },
+    { hue: baseHue + comp,           sat: Math.min(95, baseSat + 15), light: 58 + tone.light, role: "ACCENT" },
+    { hue: baseHue,                  sat: baseSat * 0.7,  light: 12, role: "INK / BG" },
+    { hue: baseHue,                  sat: baseSat * 0.4,  light: 90, role: "PAPER / CARD" },
+  ];
+
+  // color names: poetic enough to feel designed
+  const moods = tone.vivid ? "Electric" : tone.light ? "Soft" : tone.dark ? "Midnight" : tone.muted ? "Quiet" : "Wild";
+  const subject = a.matched.length ? a.matched[Math.floor(rnd() * Math.min(a.matched.length, 3))] : "Muse";
+  const names = [
+    subject,
+    ["Shallow", "Deep", "Sparse", "Veiled"][Math.floor(rnd() * 4)] + " " + subject,
+    subject + " Bloom",
+    "Ink " + subject,
+    "Paper " + subject,
+  ].map((n, i) => (moods ? n : n));
+
+  return P.map((c, i) => ({
+    ...c,
+    light: Math.max(6, Math.min(94, c.light)),
+    name: names[i],
+    hex: hslToHex(c.hue % 360, Math.max(0, Math.min(100, c.sat)), c.light),
+  }));
+}
+
+function hslToHex(h, s, l) {
+  s /= 100; l /= 100;
+  const k = n => (n + h / 30) % 12;
+  const a = s * Math.min(l, 1 - l);
+  const f = n => l - a * Math.max(-1, Math.min(Math.min(k(n) - 3, 9 - k(n)), 1));
+  const to = x => Math.round(255 * x).toString(16).padStart(2, "0");
+  return "#" + to(f(0)) + to(f(8)) + to(f(4));
+}
+
+/* ---------- UI ---------- */
+const el = {
+  prompt: document.getElementById("prompt"),
+  genBtn: document.getElementById("genBtn"),
+  chips: document.getElementById("chips"),
+  swatches: document.getElementById("swatches"),
+  cssOut: document.getElementById("cssOut"),
+  cssCode: document.getElementById("cssCode"),
+  copyBtn: document.getElementById("copyBtn"),
+  copiedNote: document.getElementById("copiedNote"),
+  body: document.body,
+};
+
+let lastPalette = null;
+let salt = 0;
+
+const SAMPLES = [
+  "cozy rainy Portland coffee shop at dusk",
+  "neon cyberpunk Tokyo alley at night",
+  "calm peaceful misty forest at sunrise",
+  "retro 80s arcade glow",
+  "quiet snowy mountain cabin, gold lamplight",
+];
+
+function render(palette) {
+  lastPalette = palette;
+
+  // tint page background subtly with the primary color
+  el.body.style.background = `radial-gradient(ellipse at 30% 20%, ${palette[0].hex}44, #12121c 70%)`;
+
+  el.swatches.innerHTML = "";
+  palette.forEach((c, i) => {
+    const d = document.createElement("div");
+    d.className = "swatch";
+    d.style.background = c.hex;
+    d.textContent = ""; // will hold children
+    d.innerHTML = `<div class="name">${c.name}</div><div class="hex">${c.hex}</div><div class="role">${c.role}</div>`;
+    d.addEventListener("click", () => copyText(c.hex));
+    el.swatches.appendChild(d);
+    setTimeout(() => d.classList.add("show"), 60 + i * 90);
+  });
+
+  el.cssCode.textContent = palette.map(c => `  --${c.role.toLowerCase().replace(/[^a-z]/g, "")}: ${c.hex};  /* ${c.name} */`).join("\n");
+  el.cssOut.classList.add("show");
+  el.copiedNote.classList.add("hidden");
+}
+
+let lastPrompt = null;
+function generate() {
+  const prompt = el.prompt.value.trim();
+  if (!prompt) { el.prompt.focus(); return; }
+  // first run (or new prompt) resets the seed; re-running the same prompt remixes it
+  salt = (prompt === lastPrompt) ? salt + 1 : 0;
+  lastPrompt = prompt;
+  render(buildPalette(prompt, salt));
+}
+
+function copyText(text) {
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(text).then(() => {
+      if (text && lastPalette && lastPalette.some(p => p.hex === text)) return;
+    }).catch(() => {});
+  }
+}
+
+SAMPLES.forEach(s => {
+  const chip = document.createElement("div");
+  chip.className = "chip";
+  chip.textContent = s;
+  chip.addEventListener("click", () => { el.prompt.value = s; generate(); });
+  el.chips.appendChild(chip);
+});
+
+el.genBtn.addEventListener("click", generate);
+el.prompt.addEventListener("keydown", e => { if (e.key === "Enter") generate(); });
+
+el.copyBtn.addEventListener("click", () => {
+  const text = ":root {\n" + el.cssCode.textContent.trim() + "\n}";
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(() => {
+      el.copiedNote.classList.remove("hidden");
+      setTimeout(() => el.copiedNote.classList.add("hidden"), 1800);
+    }).catch(() => fallbackCopy(text));
+  } else fallbackCopy(text);
+  function fallbackCopy(t) {
+    const ta = document.createElement("textarea");
+    ta.value = t; document.body.appendChild(ta); ta.select();
+    try { document.execCommand("copy"); el.copiedNote.classList.remove("hidden"); setTimeout(() => el.copiedNote.classList.add("hidden"), 1800); } catch (e) {}
+    document.body.removeChild(ta);
+  }
+});
+</script>
+</body>
+</html>

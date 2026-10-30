@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OOP Flashcard Quiz</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #eee;
+  }
+
+  .app {
+    width: 100%;
+    max-width: 640px;
+    padding: 24px;
+  }
+
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+  }
+
+  h1 { font-size: 1.4rem; color: #e94560; }
+
+  .scoreboard {
+    display: flex;
+    gap: 16px;
+    font-size: 0.95rem;
+  }
+  .scoreboard span { font-weight: bold; }
+  .score-num { color: #4ecca3; }
+  .misses-num { color: #e94560; }
+
+  .progress {
+    height: 8px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 4px;
+    margin-bottom: 24px;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #4ecca3, #e94560);
+    border-radius: 4px;
+    transition: width 0.4s ease;
+  }
+
+  .card {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 16px;
+    padding: 32px;
+    backdrop-filter: blur(8px);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.35);
+  }
+
+  .question-label {
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    font-size: 0.7rem;
+    color: #4ecca3;
+    margin-bottom: 8px;
+  }
+
+  .question {
+    font-size: 1.3rem;
+    line-height: 1.4;
+    margin-bottom: 24px;
+  }
+
+  .options { display: grid; gap: 12px; }
+
+  .option {
+    padding: 14px 18px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 10px;
+    font-size: 1rem;
+    color: #eee;
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s, transform 0.1s;
+  }
+  .option:hover:not(:disabled) {
+    background: rgba(78, 204, 163, 0.15);
+    border-color: #4ecca3;
+    transform: translateX(4px);
+  }
+  .option:disabled { cursor: default; opacity: 0.7; }
+  .option.correct {
+    background: rgba(78, 204, 163, 0.3);
+    border-color: #4ecca3;
+    opacity: 1;
+  }
+  .option.wrong {
+    background: rgba(233, 69, 96, 0.3);
+    border-color: #e94560;
+    opacity: 1;
+  }
+
+  .explanation {
+    margin-top: 20px;
+    padding: 14px 16px;
+    border-left: 3px solid #4ecca3;
+    background: rgba(255,255,255,0.04);
+    border-radius: 0 8px 8px 0;
+    font-size: 0.9rem;
+    color: #ccc;
+    display: none;
+  }
+  .explanation.show { display: block; animation: fadein 0.3s ease; }
+
+  @keyframes fadein { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+  .next-btn {
+    margin-top: 20px;
+    padding: 12px 28px;
+    background: #e94560;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    display: none;
+  }
+  .next-btn.show { display: inline-block; animation: fadein 0.3s ease; }
+  .next-btn:hover { filter: brightness(1.1); }
+
+  .results {
+    text-align: center;
+  }
+  .results .big {
+    font-size: 3.5rem;
+    font-weight: 800;
+    color: #4ecca3;
+  }
+  .results .grade { font-size: 1.4rem; margin: 8px 0 20px; }
+  .retry-btn {
+    margin-top: 20px;
+    padding: 12px 28px;
+    background: #4ecca3;
+    color: #16213e;
+    border: none;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .retry-btn:hover { filter: brightness(1.1); }
+
+  footer {
+    margin-top: 20px;
+    text-align: center;
+    font-size: 0.75rem;
+    color: rgba(255,255,255,0.35);
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>OOP Flashcards</h1>
+    <div class="scoreboard">
+      Score: <span class="score-num" id="score">0</span> &nbsp;|&nbsp;
+      Misses: <span class="misses-num" id="misses">0</span>
+    </div>
+  </header>
+
+  <div class="progress"><div class="progress-fill" id="progress"></div></div>
+
+  <div class="card">
+    <div id="quiz">
+      <div class="question-label" id="qLabel"></div>
+      <div class="question" id="question"></div>
+      <div class="options" id="options"></div>
+      <div class="explanation" id="explanation"></div>
+      <button class="next-btn" id="nextBtn">Next card →</button>
+    </div>
+
+    <div class="results" id="results" style="display:none">
+      <div class="big" id="finalScore"></div>
+      <div class="grade" id="gradeMessage"></div>
+      <button class="retry-btn" id="retryBtn">Try again 🔄</button>
+    </div>
+  </div>
+
+  <footer>Encapsulation · Abstraction · Inheritance · Polymorphism</footer>
+</div>
+
+<script>
+const QUESTIONS = [
+  {
+    topic: "Encapsulation",
+    question: "A class marks its 'balance' field private and only allows changes through deposit() and withdraw() methods. Which OOP principle is this?",
+    options: [
+      "Encapsulation — data and the code that guards it are bundled, hiding internal state",
+      "Inheritance — the bank account inherits from a parent class",
+      "Abstraction — the actual bank is hidden in a cloud server",
+      "Polymorphism — deposit() can behave differently in different accounts"
+    ],
+    answer: 0,
+    explanation: "Encapsulation bundles data with the methods that operate on it and hides the internals. Callers can't mutate 'balance' directly — they must go through the guarded methods."
+  },
+  {
+    topic: "Abstraction",
+    question: "You call list.sort() without knowing (or caring) whether it uses quicksort or mergesort under the hood. Which principle does this demonstrate?",
+    options: [
+      "Encapsulation — the sort algorithm is marked private",
+      "Abstraction — a simple interface exposes *what* it does, hiding *how*",
+      "Inheritance — list inherits from a Sortable parent class",
+      "Polymorphism — sort is one name with many implementations"
+    ],
+    answer: 1,
+    explanation: "Abstraction exposes a minimal, high-level interface ('sort it') while hiding the implementation complexity. You interact with the WHAT, not the HOW."
+  },
+  {
+    topic: "Inheritance",
+    question: "class Vehicle has move(). class Car extends Vehicle and adds openTrunk(). What did inheritance buy us here?",
+    options: [
+      "Car can change Vehicle's private fields from outside",
+      "Car reuses move() and can add its own behavior — an 'is-a' relationship",
+      "Vehicle now automatically gets openTrunk() too",
+      "Car and Vehicle become interchangeable at compile time"
+    ],
+    answer: 1,
+    explanation: "Inheritance lets a child class reuse and extend a parent's behavior. Car 'is-a' Vehicle, so it inherits move() and can add new capabilities like openTrunk()."
+  },
+  {
+    topic: "Polymorphism",
+    question: "A loop calls makeSound() on a list of Animal objects; each one (Dog, Cat, Cow) responds differently. What is this?",
+    options: [
+      "Abstraction — animals hide their internal organs",
+      "Encapsulation — sound is a private field on each animal",
+      "Inheritance — the animals share a parent class",
+      "Polymorphism — one interface, many forms: each type answers the same call its own way"
+    ],
+    answer: 3,
+    explanation: "Polymorphism means 'many forms': the same method call (makeSound()) is dispatched to each object's own implementation at runtime."
+  },
+  {
+    topic: "Encapsulation",
+    question: "Which of these is the BEST example of encapsulation?",
+    options: [
+      "A class with 12 public fields that anyone can edit",
+      "A getter/setter-controlled field so invalid values can be rejected at the boundary",
+      "A method that calls five other methods in sequence",
+      "A child class overriding a parent method"
+    ],
+    answer: 1,
+    explanation: "Encapsulation is about validating and controlling access to state. A setter that rejects a negative balance is encapsulation doing its job — the object stays invariant-valid."
+  },
+  {
+    topic: "Abstraction vs Inheritance",
+    question: "An abstract class Shape declares area() but never implements it; each subclass implements it. Which two principles are working together?",
+    options: [
+      "Encapsulation + Polymorphism",
+      "Abstraction + Inheritance only",
+      "Abstraction (defer the HOW) and Polymorphism (each subclass defines its own area())",
+      "None — abstract classes are just documentation"
+    ],
+    answer: 2,
+    explanation: "Abstract classes let you define the contract (abstraction) while each concrete subclass provides its own implementation — which is then picked up via polymorphic dispatch."
+  },
+  {
+    topic: "Polymorphism",
+    question: "Which statement about polymorphism is TRUE?",
+    options: [
+      "It only works with inheritance — interfaces can't do it",
+      "It requires overloading, never overriding",
+      "Method overriding (runtime) or overloading (compile-time) both count as polymorphism",
+      "It means a class can only have one method with a given name"
+    ],
+    answer: 2,
+    explanation: "Runtime polymorphism = overriding (virtual dispatch on objects); compile-time polymorphism = overloading (same name, different signatures). Both are legitimate forms."
+  },
+  {
+    topic: "The Four Pillars",
+    question: "Fill the blanks: ______ hides the HOW, ______ hides the data, ______ reuses from a parent, ______ lets one call take many forms.",
+    options: [
+      "Abstraction, Encapsulation, Inheritance, Polymorphism",
+      "Encapsulation, Abstraction, Polymorphism, Inheritance",
+      "Inheritance, Abstraction, Encapsulation, Polymorphism",
+      "Polymorphism, Inheritance, Abstraction, Encapsulation"
+    ],
+    answer: 0,
+    explanation: "Abstraction = hide complexity (the HOW). Encapsulation = guard the data. Inheritance = reuse via 'is-a'. Polymorphism = one interface, many behaviors."
+  }
+];
+
+let current = 0;
+let score = 0;
+let misses = 0;
+
+const el = {
+  score: document.getElementById("score"),
+  misses: document.getElementById("misses"),
+  progress: document.getElementById("progress"),
+  quiz: document.getElementById("quiz"),
+  qLabel: document.getElementById("qLabel"),
+  question: document.getElementById("question"),
+  options: document.getElementById("options"),
+  explanation: document.getElementById("explanation"),
+  nextBtn: document.getElementById("nextBtn"),
+  results: document.getElementById("results"),
+  finalScore: document.getElementById("finalScore"),
+  gradeMessage: document.getElementById("gradeMessage"),
+  retryBtn: document.getElementById("retryBtn"),
+};
+
+function renderQuestion() {
+  const q = QUESTIONS[current];
+  el.qLabel.textContent = `Card ${current + 1} / ${QUESTIONS.length} · ${q.topic}`;
+  el.question.textContent = q.question;
+  el.explanation.classList.remove("show");
+  el.nextBtn.classList.remove("show");
+  el.progress.style.width = `${(current / QUESTIONS.length) * 100}%`;
+
+  el.options.innerHTML = "";
+  q.options.forEach((optText, i) => {
+    const btn = document.createElement("button");
+    btn.className = "option";
+    btn.textContent = `${String.fromCharCode(65 + i)}. ${optText}`;
+    btn.addEventListener("click", () => chooseAnswer(i, btn));
+    el.options.appendChild(btn);
+  });
+}
+
+function chooseAnswer(index, btn) {
+  const q = QUESTIONS[current];
+  const buttons = [...el.options.children];
+
+  buttons.forEach(b => (b.disabled = true));
+  buttons[q.answer].classList.add("correct");
+
+  if (index === q.answer) {
+    score++;
+    el.score.textContent = score;
+  } else {
+    btn.classList.add("wrong");
+    misses++;
+    el.misses.textContent = misses;
+  }
+
+  el.explanation.textContent = q.explanation;
+  el.explanation.classList.add("show");
+  el.nextBtn.textContent =
+    current === QUESTIONS.length - 1 ? "See results →" : "Next card →";
+  el.nextBtn.classList.add("show");
+}
+
+function nextCard() {
+  current++;
+  if (current < QUESTIONS.length) {
+    renderQuestion();
+  } else {
+    showResults();
+  }
+}
+
+function showResults() {
+  const pct = Math.round((score / QUESTIONS.length) * 100);
+  el.quiz.style.display = "none";
+  el.results.style.display = "block";
+  el.progress.style.width = "100%";
+  el.finalScore.textContent = `${score} / ${QUESTIONS.length}`;
+  el.gradeMessage.textContent =
+    pct === 100 ? "🏆 Perfect! You know your pillars." :
+    pct >= 70  ? "🎉 Solid grasp of OOP — great job!" :
+    pct >= 40  ? "👍 Decent — worth a re-cap on the misses." :
+                 "📚 No worries — review the pillars and retry!";
+}
+
+function resetQuiz() {
+  current = 0;
+  score = 0;
+  misses = 0;
+  el.score.textContent = "0";
+  el.misses.textContent = "0";
+  el.results.style.display = "none";
+  el.quiz.style.display = "block";
+  renderQuestion();
+}
+
+el.nextBtn.addEventListener("click", nextCard);
+el.retryBtn.addEventListener("click", resetQuiz);
+
+// Kick off
+renderQuestion();
+</script>
+</body>
+</html>
